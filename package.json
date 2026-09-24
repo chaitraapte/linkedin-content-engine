@@ -1,0 +1,22 @@
+{
+  "name": "linkedin-content-engine",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Telegram bot: capture ideas -> evaluate -> contextualise -> draft -> evaluate -> review gate",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/bot.ts",
+    "check": "node --env-file-if-exists=.env src/check.ts"
+  },
+  "engines": {
+    "node": ">=23.6"
+  },
+  "dependencies": {
+    "@google/genai": "^2.24.0",
+    "grammy": "^1.46.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "typescript": "^7.0.2"
+  }
+}
