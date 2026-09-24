@@ -29,7 +29,10 @@ export const config = {
   // Google News region, e.g. hl=en-IN&gl=IN&ceid=IN:en for India.
   newsLocale: process.env.NEWS_LOCALE || "hl=en-IN&gl=IN&ceid=IN:en",
 
-  // Reminders, local machine time. Format: "day:hour" where day 0=Sun ... 5=Fri.
+  // Reminders. Format: "day:hour" where day 0=Sun ... 5=Fri.
+  // Locally (npm start) this is your computer's local time. On Vercel, checkReminders
+  // runs inside vercel.json's cron schedules, which are UTC -- so on Vercel this value
+  // should already be in UTC (convert from your local time before setting it there).
   reminders: (process.env.REMINDERS || "3:18,5:9").split(",").map((s) => {
     const [d, h] = s.trim().split(":").map(Number);
     return { day: d, hour: h };

@@ -1,7 +1,9 @@
 // Vercel Cron entrypoint: replaces the setInterval reminder loop, which can't
-// run on serverless. Scheduled hourly in vercel.json ("0 * * * *"); checkReminders
-// itself only actually sends a message when the current day/hour matches a
-// configured reminder, and is idempotent per hour.
+// run on serverless. Hobby plan crons can't run more than once/day, so
+// vercel.json schedules one fixed UTC time per reminder (matching REMINDERS,
+// converted from local time to UTC) instead of an hourly sweep. checkReminders
+// itself only sends a message when the current day/hour matches a configured
+// reminder, and is idempotent per hour either way.
 import { checkReminders } from "../src/bot.ts";
 
 export default async function handler(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse) {

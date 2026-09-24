@@ -3,5 +3,8 @@
     "api/telegram.ts": { "maxDuration": 60 },
     "api/cron.ts": { "maxDuration": 30 }
   },
-  "crons": [{ "path": "/api/cron", "schedule": "0 * * * *" }]
+  "crons": [
+    { "path": "/api/cron", "schedule": "30 12 * * 3" },
+    { "path": "/api/cron", "schedule": "30 3 * * 5" }
+  ]
 }
