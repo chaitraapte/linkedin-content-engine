@@ -24,9 +24,15 @@ export function loadStyle() {
 }
 
 export function appendApprovedPost(text: string) {
-  const file = path.join(config.styleDir, "approved_posts.md");
-  const header = fs.existsSync(file) ? "" : "<!-- Posts you approved through the bot. Used as extra style reference. -->\n";
-  fs.appendFileSync(file, `${header}\n---\n${text.trim()}\n`);
+  // On Vercel the deployed filesystem is read-only, so this is best-effort:
+  // it keeps working on a local/always-on host, and quietly no-ops in serverless.
+  try {
+    const file = path.join(config.styleDir, "approved_posts.md");
+    const header = fs.existsSync(file) ? "" : "<!-- Posts you approved through the bot. Used as extra style reference. -->\n";
+    fs.appendFileSync(file, `${header}\n---\n${text.trim()}\n`);
+  } catch (err) {
+    console.error("Couldn't persist approved_posts.md (read-only filesystem?)", err instanceof Error ? err.message : err);
+  }
 }
 
 // ---------- Idea evaluation (Gemini) ----------

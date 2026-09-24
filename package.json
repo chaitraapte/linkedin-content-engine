@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Telegram bot: capture ideas -> evaluate -> contextualise -> draft -> evaluate -> review gate",
   "scripts": {
-    "start": "node --env-file-if-exists=.env src/bot.ts",
+    "start": "node --env-file-if-exists=.env src/local.ts",
     "check": "node --env-file-if-exists=.env src/check.ts"
   },
   "engines": {
@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.24.0",
+    "@upstash/redis": "^1.39.0",
     "grammy": "^1.46.0"
   },
   "devDependencies": {

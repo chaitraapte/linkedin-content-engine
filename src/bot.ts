@@ -6,7 +6,7 @@ import { draftPost, evaluateIdea, evaluatePost, researchContext, revisePost, tra
 import { headlinesFor } from "./news.ts";
 import { appendApprovedPost, type IdeaEval, type PostEval } from "./prompts.ts";
 
-const bot = new Bot(config.telegramToken);
+export const bot = new Bot(config.telegramToken);
 
 // chatId -> ideaId waiting for the author's edit instructions / rewritten post
 const pendingEdit = new Map<number, number>();
@@ -81,7 +81,7 @@ const reviewKeyboard = (id: number) =>
 
 async function remember(idea: Idea, messageId: number) {
   idea.messageIds.push(messageId);
-  store.save();
+  await store.save();
 }
 
 /** A status message that updates in place while long steps run. */
@@ -104,7 +104,7 @@ async function scoreIdea(ctx: Context, idea: Idea) {
   const s = await status(ctx, "🧠 Evaluating your idea…");
   try {
     idea.eval = await evaluateIdea(idea.raw, idea.notes);
-    store.save();
+    await store.save();
   } catch (err) {
     await s.done();
     return fail(ctx, "evaluating the idea", err);
@@ -125,7 +125,7 @@ async function develop(ctx: Context, idea: Idea) {
         console.error("research", err);
         return headlines ? `Recent headlines:\n${headlines}` : null;
       });
-      store.save();
+      await store.save();
     }
     await s.update("✍️ Step 2/3 — Drafting in your voice…");
     const text = await draftPost({ idea: idea.raw, notes: idea.notes, context: idea.context, ideaEval: idea.eval });
@@ -133,7 +133,7 @@ async function develop(ctx: Context, idea: Idea) {
     const ev = await evaluatePost(text, idea.raw);
     idea.drafts.push({ text, eval: ev, feedback: null, createdAt: new Date().toISOString() });
     idea.status = "in_review";
-    store.save();
+    await store.save();
   } catch (err) {
     await s.done();
     return fail(ctx, "developing the post", err);
@@ -153,7 +153,7 @@ async function revise(ctx: Context, idea: Idea, feedback: string, ownVersion = f
     const ev = await evaluatePost(text, idea.raw);
     idea.drafts.push({ text, eval: ev, feedback: ownVersion ? "(author's own edit)" : feedback, createdAt: new Date().toISOString() });
     idea.status = "in_review";
-    store.save();
+    await store.save();
   } catch (err) {
     await s.done();
     return fail(ctx, "revising the post", err);
@@ -175,6 +175,16 @@ async function sendReview(ctx: Context, idea: Idea, elapsedMs?: number) {
   if (elapsedMs) notes.push(`Ready in ${Math.round(elapsedMs / 1000)}s`);
   if (notes.length) await ctx.reply(`<i>${notes.join(" · ")}</i>`, { parse_mode: "HTML" });
 }
+
+// ---------- load state ----------
+
+// Runs before every update. On Vercel, each invocation is a fresh process, so
+// this pulls the latest data from Redis; locally it's a cheap no-op after the
+// first call (see store.ts).
+bot.use(async (ctx, next) => {
+  await store.ensureLoaded();
+  await next();
+});
 
 // ---------- access control ----------
 
@@ -282,11 +292,11 @@ bot.callbackQuery(/^(dev|save|rej|apply|edit|ok):(\d+)$/, async (ctx) => {
       return develop(ctx, idea);
     case "save":
       idea.status = "saved";
-      store.save();
+      await store.save();
       return ctx.reply(`💾 Saved idea #${idea.id} for later. It'll show up in /backlog and your Friday reminder.`);
     case "rej":
       idea.status = "rejected";
-      store.save();
+      await store.save();
       return ctx.reply(`🗑 Rejected idea #${idea.id}.`);
     case "apply": {
       const e = idea.drafts.at(-1)?.eval;
@@ -301,7 +311,7 @@ bot.callbackQuery(/^(dev|save|rej|apply|edit|ok):(\d+)$/, async (ctx) => {
       const text = idea.drafts.at(-1)!.text;
       idea.final = text;
       idea.status = "approved";
-      store.save();
+      await store.save();
       appendApprovedPost(text);
       await ctx.reply(`✅ Approved idea #${idea.id}. Here's the final text to paste into LinkedIn:`);
       return ctx.reply(text);
@@ -331,7 +341,7 @@ async function handleText(ctx: Context, text: string, source: "text" | "voice") 
   if (target) {
     target.notes.push(text);
     target.context = null; // research again with the new detail
-    store.save();
+    await store.save();
     if (target.status === "in_review" || target.status === "approved") {
       return revise(ctx, target, `The author added this detail — work it in naturally:\n${text}`);
     }
@@ -340,7 +350,7 @@ async function handleText(ctx: Context, text: string, source: "text" | "voice") 
   }
 
   // 3) New idea
-  const idea = store.createIdea(text, source);
+  const idea = await store.createIdea(text, source);
   await scoreIdea(ctx, idea);
 }
 
@@ -366,14 +376,21 @@ bot.on(["message:voice", "message:audio"], async (ctx) => {
 
 // ---------- weekly rhythm ----------
 
-async function checkReminders() {
+/**
+ * Checks whether any configured reminder is due *right now* and sends it.
+ * Called every minute by the long-polling entrypoint (local.ts), or once an
+ * hour by the Vercel Cron job (api/cron.ts) — either way it's idempotent
+ * per hour thanks to the reminderSent/markReminder guard.
+ */
+export async function checkReminders() {
   if (config.allowedUserId === null) return;
+  await store.ensureLoaded();
   const now = new Date();
   for (const r of config.reminders) {
     if (now.getDay() !== r.day || now.getHours() !== r.hour) continue;
     const key = `${now.toISOString().slice(0, 10)}:${r.hour}`;
     if (store.reminderSent(key)) continue;
-    store.markReminder(key);
+    await store.markReminder(key);
 
     const approved = store.listIdeas("approved").filter((i) => Date.now() - new Date(i.createdAt).getTime() < 14 * 864e5);
     const backlog = backlogText();
@@ -386,19 +403,3 @@ async function checkReminders() {
 }
 
 bot.catch((err) => console.error("Bot error:", err.error));
-
-try {
-  await bot.api.setMyCommands([
-    { command: "backlog", description: "Saved ideas, best first" },
-    { command: "ready", description: "Approved posts ready to publish" },
-    { command: "develop", description: "Develop an idea: /develop <id>" },
-    { command: "idea", description: "Show an idea: /idea <id>" },
-    { command: "help", description: "How this works" },
-  ]);
-} catch (err) {
-  console.error("Couldn't connect to Telegram. Check TELEGRAM_BOT_TOKEN in .env.\n", err instanceof Error ? err.message : err);
-  process.exit(1);
-}
-setInterval(checkReminders, 60_000);
-console.log(`Bot running (triage/research: ${config.geminiModel}, drafting: ${config.geminiDraftModel}). Press Ctrl+C to stop.`);
-bot.start();
